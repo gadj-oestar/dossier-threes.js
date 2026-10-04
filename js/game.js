@@ -1,212 +1,203 @@
-import * as THREE from'../node_modules/three/build/three.module.js';
-import { MapControls } from 'three/addons/controls/OrbitControls.js';
-import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import * as THREE from "three";
+import { MapControls } from "three/addons/controls/OrbitControls.js";
 
+const DUREE_PARTIE = 60; // secondes
+const BONUS_TEMPS = 10; // secondes gagnées par forme trouvée
+const POINTS_PAR_FORME = 10;
+const NB_DECORS = 2000;
 
+// Utilitaires
+function aleatoire(min, max) {
+  return Math.floor(Math.random() * (max - min) + min);
+}
 
+function positionAleatoire(objet, etendue) {
+  objet.position.set(
+    aleatoire(-etendue, etendue),
+    aleatoire(-etendue, etendue),
+    aleatoire(-etendue, etendue)
+  );
+  objet.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+}
+
+// Scène
 const scene = new THREE.Scene();
- scene.background = new THREE.Color( 0x606c38);
- const light = new THREE.PointLight( 0xffffff, 4, 200 );
- const ambiant_light = new THREE.AmbientLight( 0x404040,1.6 ); // soft white light
-scene.add( ambiant_light );
- light.position.set( 0, 30,20 );
- scene.add(light);  
- function getRandomArbitrary(min, max) {
-    return Math.floor(Math.random() * (max - min) + min);
+scene.background = new THREE.Color(0x0b1020);
+scene.fog = new THREE.Fog(0x0b1020, 120, 380);
+
+scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e1b4b, 0.9));
+const soleil = new THREE.DirectionalLight(0xffffff, 0.9);
+soleil.position.set(60, 120, 80);
+scene.add(soleil);
+
+// Décor : 2000 objets répartis en trois familles qui partagent leur géométrie et leur matériau
+const familles = [
+  {
+    geometrie: new THREE.BoxGeometry(5, 5, 6),
+    materiau: new THREE.MeshStandardMaterial({ color: 0x2b9348, roughness: 0.6 }),
+    etendue: 90,
+  },
+  {
+    geometrie: new THREE.IcosahedronGeometry(2, 1),
+    materiau: new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.4, flatShading: true }),
+    etendue: 70,
+  },
+  {
+    geometrie: new THREE.TorusKnotGeometry(2, 0.3, 64, 8),
+    materiau: new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.2 }),
+    etendue: 70,
+  },
+];
+
+for (let i = 0; i < NB_DECORS; i++) {
+  const famille = familles[aleatoire(0, familles.length)];
+  const objet = new THREE.Mesh(famille.geometrie, famille.materiau);
+  positionAleatoire(objet, famille.etendue);
+  scene.add(objet);
+}
+
+// Les quatre formes à trouver
+const formes = [
+  { nom: "Capsule", couleur: 0xf97316, geometrie: new THREE.CapsuleGeometry(3, 3, 10, 16) },
+  { nom: "Cône", couleur: 0xec4899, geometrie: new THREE.ConeGeometry(3, 10, 32) },
+  { nom: "Cylindre", couleur: 0xffd6e0, geometrie: new THREE.CylinderGeometry(3, 3, 4, 32) },
+  { nom: "Octaèdre", couleur: 0xa855f7, geometrie: new THREE.OctahedronGeometry(3) },
+];
+
+const listeObjectifs = document.getElementById("objectifs");
+
+for (const forme of formes) {
+  const materiau = new THREE.MeshStandardMaterial({
+    color: forme.couleur,
+    emissive: forme.couleur,
+    emissiveIntensity: 0.25,
+    roughness: 0.35,
+  });
+  forme.mesh = new THREE.Mesh(forme.geometrie, materiau);
+  forme.mesh.userData.forme = forme;
+  positionAleatoire(forme.mesh, 70);
+  scene.add(forme.mesh);
+
+  forme.element = document.createElement("li");
+  forme.element.innerHTML = `<span class="pastille"></span>${forme.nom}`;
+  forme.element.querySelector(".pastille").style.background = `#${forme.couleur.toString(16).padStart(6, "0")}`;
+  listeObjectifs.appendChild(forme.element);
+}
+
+// Caméra, rendu et contrôles
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 1000);
+camera.position.set(0, 100, 120);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.prepend(renderer.domElement);
+
+const controls = new MapControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.screenSpacePanning = false;
+controls.minDistance = 10;
+controls.maxDistance = 300;
+controls.enabled = false;
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// État de la partie
+const affichageTemps = document.getElementById("timer");
+const affichageScore = document.getElementById("score");
+let temps = DUREE_PARTIE;
+let score = 0;
+let enCours = false;
+let minuteur = null;
+
+function afficherTemps() {
+  affichageTemps.textContent = `${temps} s`;
+  affichageTemps.classList.toggle("urgent", temps <= 10);
+}
+
+function afficherScore() {
+  affichageScore.textContent = `${score} / ${formes.length * POINTS_PAR_FORME}`;
+}
+
+function commencer() {
+  document.getElementById("accueil").classList.add("cache");
+  enCours = true;
+  controls.enabled = true;
+
+  minuteur = setInterval(() => {
+    temps--;
+    afficherTemps();
+    if (temps <= 0) terminer(false);
+  }, 1000);
+}
+
+function terminer(victoire) {
+  enCours = false;
+  controls.enabled = false;
+  clearInterval(minuteur);
+
+  document.getElementById("fin-titre").textContent = victoire ? "Bravo !" : "Temps écoulé";
+  document.getElementById("fin-texte").textContent = victoire
+    ? `Tu as trouvé les ${formes.length} formes avec ${temps} s d'avance.`
+    : `Score final : ${score} / ${formes.length * POINTS_PAR_FORME}.`;
+  document.getElementById("fin").classList.remove("cache");
+}
+
+function trouver(forme) {
+  forme.trouvee = true;
+  scene.remove(forme.mesh);
+  forme.element.classList.add("trouve");
+
+  score += POINTS_PAR_FORME;
+  temps += BONUS_TEMPS;
+  afficherScore();
+  afficherTemps();
+
+  if (formes.every((f) => f.trouvee)) terminer(true);
+}
+
+// Clic sur une forme (on ignore les clics qui servent à déplacer la caméra)
+const raycaster = new THREE.Raycaster();
+const pointeur = new THREE.Vector2();
+let departClic = null;
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  departClic = { x: event.clientX, y: event.clientY };
+});
+
+renderer.domElement.addEventListener("pointerup", (event) => {
+  if (!enCours || !departClic) return;
+  const deplacement = Math.hypot(event.clientX - departClic.x, event.clientY - departClic.y);
+  if (deplacement > 5) return;
+
+  pointeur.set(
+    (event.clientX / window.innerWidth) * 2 - 1,
+    -(event.clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(pointeur, camera);
+  const [premier] = raycaster.intersectObjects(scene.children, false);
+  const forme = premier?.object.userData.forme;
+  if (forme && !forme.trouvee) trouver(forme);
+});
+
+document.getElementById("commencer").addEventListener("click", commencer);
+document.getElementById("rejouer").addEventListener("click", () => window.location.reload());
+
+// Boucle d'animation : les formes à trouver tournent sur elles-mêmes
+function animer() {
+  requestAnimationFrame(animer);
+  for (const forme of formes) {
+    if (!forme.trouvee) forme.mesh.rotation.y += 0.01;
   }
- for(let i = 0; i < 2000;i++) {
-    let compteur =Math.floor( Math.random()*(5-1)+1);
-    if(compteur===1){
-        const geometry = new THREE.BoxGeometry( 5, 5, 6 );
-        const material = new THREE.MeshMatcapMaterial( {color: 0x2b9348} );
-        const cube = new THREE.Mesh( geometry, material );
-        cube.position.set(
-            getRandomArbitrary(-90, 90), 
-            getRandomArbitrary(-90, 90) ,
-            getRandomArbitrary(-90, 90)
-
-           )
-
-        scene.add( cube );} 
-    if(compteur===3){
-        const geometry = new THREE.IcosahedronGeometry( 2, 3, 23 );
-const material = new THREE.MeshPhongMaterial( { color: 0xc6291, side: THREE.DoubleSide } );
-const mesh = new THREE.Mesh( geometry, material );
-  mesh.position.set(
-    getRandomArbitrary(-70, 70), 
-    getRandomArbitrary(-70, 70) ,
-    getRandomArbitrary(-70, 70)
-
-   )
-scene.add( mesh );
-    }
-    if(compteur===4){
-        const geometry = new THREE.TorusKnotGeometry( 20, 3, 100, 16 );
-        const material = new THREE.MeshLambertMaterial( { color: 0xffff00, } );
-        const torusKnot = new THREE.Mesh( geometry, material );
-        torusKnot.scale.set(0.1,0.1,0.1);
-        torusKnot.position.set(
-          getRandomArbitrary(-70, 70), 
-          getRandomArbitrary(-70, 70) ,
-          getRandomArbitrary(-70, 70)
-
-           )
-
-            scene.add(torusKnot);
-    }
- }
- //camera,
-  const aspect = window.innerWidth / window.innerHeight;
-  const camera= new THREE.PerspectiveCamera(75,aspect, 1,5000);
-  scene.add( camera );
-  camera.position.setY(100)
-
-
-//render
- const renderer = new THREE.WebGLRenderer();
- renderer.setSize(window.innerWidth, window.innerHeight );
- document.body.appendChild( renderer.domElement);
-
- const controls = new MapControls( camera, renderer.domElement );
- controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
-				controls.dampingFactor = 0.05;
-
-				controls.screenSpacePanning = false;
-
-				controls.minDistance = 100;
-				controls.maxDistance = 500;
-
-
-let scoreVerif = false;
-let score =0;
-let win1=false;
-let win2=false;
-let win3=false;
-let win4=false;
-let end = document.getElementById("end");
-
-
-
-  
- function render() {
-   
   controls.update();
-
-  if( !win1 && (camera.position.x < capsule.position.x+10 && camera.position.x > capsule.position.x-10) && (camera.position.y< capsule.position.y+10 &&camera.position.y> capsule.position.y-10) && (camera.position.z< capsule.position.z+10 && camera.position.z > capsule.position.z-10)) {
-    score+=10;
-    temps+=10;
-    win1=true;
-    scene.remove(capsule);
-
-    document.getElementById("scorevalue").innerText=score +'/40';
-
-}
-if( !win2 &&(camera.position.x < cone.position.x+10 && camera.position.x >cone.position.x-10) && (camera.position.y< cone.position.y+10 &&camera.position.y> cone.position.y-10) && (camera.position.z< cone.position.z+10 && camera.position.z > cone.position.z-10)) {
-  scene.remove(cone);
-  score+=10;
-  temps+=10;
-  win2=true;
-  document.getElementById("scorevalue").innerText=score +'/40'
-}
-if( !win3 &&(camera.position.x < cylinder.position.x+10 && camera.position.x >cylinder.position.x-10) && (camera.position.y< cylinder.position.y+10 &&camera.position.y> cylinder.position.y-10) && (camera.position.z< cylinder.position.z+10 && camera.position.z > cylinder.position.z-10)) {
-  scene.remove(cylinder);
-  score+=10;
-  temps+=10;
-  win3=true;
-  document.getElementById("scorevalue").innerText=score+'/40'
+  renderer.render(scene, camera);
 }
 
-if( !win4 &&(camera.position.x < octa.position.x+10 && camera.position.x >octa.position.x-10) && (camera.position.y< octa.position.y+10 &&camera.position.y> octa.position.y-10) && (camera.position.z< octa.position.z+10 && camera.position.z >octa.position.z-10)) {
-  scene.remove(octa);
-  score+=10;
-  temps+=10;
-  win4=true;
-  document.getElementById("scorevalue").innerText=score+'/40'
-}
-
-if(score ===40 && scoreVerif === false){
-  scoreVerif = true;
-   }
-
-    renderer.render(scene,camera);
-    requestAnimationFrame(render);
- }
-
- 
-
-console.log(score);
-     
- let geometry = new THREE.CapsuleGeometry( 3, 3, 10, 8 );
-   let material = new THREE.MeshMatcapMaterial( {color:0xEE7224 } );
-  let capsule = new THREE.Mesh( geometry, material );
-    capsule.position.set(
-      getRandomArbitrary(-70, 70), 
-            getRandomArbitrary(-70, 70) ,
-            getRandomArbitrary(-70, 70)
-       )
-       scene.add( capsule );
-   
-
-    const geometrie = new THREE.ConeGeometry( 3, 10, 32 );
-    const materiale = new THREE.MeshMatcapMaterial( {color: 0xd4d700} );
-    const cone = new THREE.Mesh( geometrie, materiale );
-   cone.position.set(
-    getRandomArbitrary(-70, 70), 
-    getRandomArbitrary(-70, 70) ,
-    getRandomArbitrary(-70, 70)
-
-     )
-    scene.add( cone );
-
-    const geometri = new THREE.CylinderGeometry( 3, 3, 4  );
-const materialle = new THREE.MeshMatcapMaterial( {color: 0xffd6e0} );
-const cylinder = new THREE.Mesh( geometri, materialle );
-cylinder.position.set(
-  getRandomArbitrary(-70, 70), 
-  getRandomArbitrary(-70, 70) ,
-  getRandomArbitrary(-70, 70)
-
-   )
-scene.add( cylinder );
-const Geometri = new THREE.OctahedronGeometry( 3, 3, 4  );
-const Materialle = new THREE.MeshMatcapMaterial( {color: 0x5660099} );
-const octa = new THREE.Mesh( Geometri, Materialle );
-octa.position.set(
-  getRandomArbitrary(-70, 70), 
-  getRandomArbitrary(-70, 70) ,
-  getRandomArbitrary(-70, 70)
-
-   )
-scene.add( octa );
-
-
-
- render();
- var temps=60;
- const time =document.getElementById("timervalue");
-
-function decrement(){
-  const interval = setInterval(function(){
-    temps=temps-1
-    time.innerText=temps+"S";
-    if(temps===0){
-      clearInterval(interval);
-    controls.enabled=false;
-
-    }
-   },1000);
-}
-
-let welcome = document.getElementsByClassName("welcome");
-
-welcome[0].addEventListener('click', function(event){
-  event.preventDefault();
-  this.style.display="none";
-})
-
-decrement();
-
-
-
-
- 
+afficherTemps();
+afficherScore();
+animer();
