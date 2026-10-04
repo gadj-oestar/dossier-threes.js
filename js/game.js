@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { MapControls } from "three/addons/controls/OrbitControls.js";
 
 const DUREE_PARTIE = 60; // secondes
-const BONUS_TEMPS = 10; // secondes gagnées par forme trouvée
 const POINTS_PAR_FORME = 10;
 const NB_DECORS = 2000;
 
@@ -154,9 +153,7 @@ function trouver(forme) {
   forme.element.classList.add("trouve");
 
   score += POINTS_PAR_FORME;
-  temps += BONUS_TEMPS;
   afficherScore();
-  afficherTemps();
 
   if (formes.every((f) => f.trouvee)) terminer(true);
 }

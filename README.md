@@ -1,6 +1,6 @@
 # Chasse aux formes
 
-Mini-jeu en 3D avec [three.js](https://threejs.org/) : quatre formes (capsule, cône, cylindre, octaèdre) sont cachées parmi 2000 objets. Il faut cliquer dessus avant la fin du chrono. Chaque forme trouvée rapporte 10 points et 10 secondes.
+Mini-jeu en 3D avec [three.js](https://threejs.org/) : quatre formes (capsule, cône, cylindre, octaèdre) sont cachées parmi 2000 objets. Il faut cliquer dessus avant la fin du chrono. Chaque forme trouvée rapporte 10 points.
 
 ## Commandes
 
